@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Kanban Dashboard</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="Track your stock positions with a Kanban-style dashboard">
+    <meta name="theme-color" content="#667eea">
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- iOS Specific Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Stock Kanban">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="icon-192.png">
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+        }
+
+        h1 {
+            font-size: 28px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+
+        .search-container {
+            position: relative;
+            max-width: 500px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 14px 20px;
+            font-size: 16px;
+            border: none;
+            border-radius: 8px;
+            outline: none;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .search-results {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border-radius: 8px;
+            margin-top: 8px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+        }
+
+        .search-results.active {
+            display: block;
+        }
+
+        .search-result-item {
+            padding: 12px 20px;
+            cursor: pointer;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background 0.2s;
+        }
+
+        .search-result-item:hover {
+            background: #f8f9fa;
+        }
+
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+
+        .ticker-symbol {
+            font-weight: 600;
+            color: #667eea;
+            font-size: 15px;
+        }
+
+        .company-name {
+            color: #666;
+            font-size: 13px;
+            margin-top: 2px;
+        }
+
+        .board {
+            padding: 30px;
+            display: flex;
+            gap: 20px;
+            overflow-x: auto;
+        }
+
+        .swimlane {
+            flex: 1;
+            min-width: 300px;
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        /* Make established swimlane wider */
+        .swimlane:nth-child(2) {
+            flex: 2;
+            min-width: 500px;
+        }
+
+        .swimlane-header {
+            font-size: 16px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        .swimlane-content {
+            min-height: 400px;
+        }
+
+        /* Grid layout for established swimlane */
+        div#swimlane-established.swimlane-content {
+            display: grid !important;
+            grid-template-columns: repeat(2, 1fr) !important;
+            gap: 12px !important;
+            align-content: start !important;
+        }
+
+        @media (min-width: 800px) {
+            div#swimlane-established.swimlane-content {
+                grid-template-columns: repeat(3, 1fr) !important;
+            }
+        }
+
+        @media (min-width: 1200px) {
+            div#swimlane-established.swimlane-content {
+                grid-template-columns: repeat(4, 1fr) !important;
+            }
+        }
+
+        .stock-card {
+            background: white;
+            border-radius: 8px;
+            padding: 16px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            cursor: move;
+            transition: all 0.2s;
+            border-left: 4px solid #667eea;
+        }
+
+        /* Add margin only for non-grid swimlanes */
+        #swimlane-early .stock-card,
+        #swimlane-closed .stock-card {
+            margin-bottom: 12px;
+        }
+
+        .stock-card:hover {
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .stock-card.dragging {
+            opacity: 0.5;
+        }
+
+        .swimlane-content.drag-over {
+            background: #e7f3ff;
+            border: 2px dashed #667eea;
+        }
+
+        .stock-ticker {
+            font-size: 18px;
+            font-weight: 700;
+            color: #667eea;
+            margin-bottom: 8px;
+        }
+
+        .stock-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .days-badge {
+            background: #667eea;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .date-added {
+            font-size: 12px;
+            color: #666;
+            background: #fff3cd;
+            padding: 4px 8px;
+            border-radius: 4px;
+            display: inline-block;
+        }
+
+        .delete-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-top: 8px;
+            transition: background 0.2s;
+        }
+
+        .delete-btn:hover {
+            background: #c82333;
+        }
+
+        .no-stocks {
+            text-align: center;
+            color: #999;
+            padding: 40px 20px;
+            font-size: 14px;
+            grid-column: 1 / -1;
+        }
+
+        .stats {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            color: white;
+        }
+
+        .stat-item {
+            display: inline-block;
+            margin-right: 20px;
+            font-size: 14px;
+        }
+
+        .stat-value {
+            font-weight: 700;
+            font-size: 20px;
+        }
+
+        .import-export-section {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn:hover {
+            background: #f0f0f0;
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #218838;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .modal-body {
+            margin-bottom: 20px;
+        }
+
+        .modal-footer {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        .form-textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            min-height: 200px;
+            font-family: monospace;
+        }
+
+        .help-text {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .example-box {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Stock Position Kanban Dashboard</h1>
+            <div class="search-container">
+                <input 
+                    type="text" 
+                    class="search-input" 
+                    id="stockSearch" 
+                    placeholder="Search ticker or press Enter to add manually (e.g., AAPL, TSLA)..."
+                    autocomplete="off"
+                >
+                <div class="search-results" id="searchResults"></div>
+            </div>
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-value" id="totalStocks">0</div>
+                    <div>Total Positions</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="activeStocks">0</div>
+                    <div>Active</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value" id="closedStocks">0</div>
+                    <div>Closed</div>
+                </div>
+            </div>
+            
+            <div class="import-export-section">
+                <button class="btn btn-primary" onclick="kanban.showImportModal()">📥 Import Stocks</button>
+                <button class="btn" onclick="kanban.exportToCSV()">📤 Export CSV</button>
+                <button class="btn" onclick="kanban.exportToJSON()">💾 Export JSON</button>
+                <button class="btn" onclick="kanban.clearAllData()" style="background: #dc3545; color: white;">🗑️ Clear All</button>
+            </div>
+        </div>
+
+        <!-- Import Modal -->
+        <div class="modal" id="importModal">
+            <div class="modal-content">
+                <div class="modal-header">Import Stock Positions</div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label class="form-label">Import from CSV/Excel file</label>
+                        <input type="file" class="file-input" id="fileInput" accept=".csv,.txt" onchange="kanban.handleFileImport(event)">
+                        <button class="btn" onclick="document.getElementById('fileInput').click()">Choose File</button>
+                        <div class="help-text">CSV format: Symbol, Name, Date Added (YYYY-MM-DD), Swimlane</div>
+                        <div class="example-box">Example CSV:
+AAPL,Apple Inc.,2024-12-20,early
+TSLA,Tesla Inc.,2024-12-15,established
+GOOGL,Alphabet Inc.,2024-12-10,closed</div>
+                    </div>
+                    
+                    <div style="text-align: center; margin: 20px 0; color: #999;">OR</div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Paste stock list (one per line)</label>
+                        <textarea class="form-textarea" id="bulkImportText" placeholder="Enter stocks (one per line):
+AAPL
+TSLA, 2024-12-20
+GOOGL, Tesla Inc., 2024-12-15, established"></textarea>
+                        <div class="help-text">Formats supported:<br>
+• Symbol only: AAPL<br>
+• Symbol, Date: AAPL, 2024-12-20<br>
+• Symbol, Name, Date, Swimlane: AAPL, Apple Inc., 2024-12-20, early</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn" onclick="kanban.closeImportModal()">Cancel</button>
+                    <button class="btn btn-primary" onclick="kanban.processBulkImport()">Import</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="board">
+            <div class="swimlane">
+                <div class="swimlane-header">📍 Position (1-3 Days)</div>
+                <div class="swimlane-content" id="swimlane-early" data-swimlane="early"></div>
+            </div>
+
+            <div class="swimlane">
+                <div class="swimlane-header">📈 Position (≥4 Days)</div>
+                <div class="swimlane-content" id="swimlane-established" data-swimlane="established"></div>
+            </div>
+
+            <div class="swimlane">
+                <div class="swimlane-header">✅ Closed Positions</div>
+                <div class="swimlane-content" id="swimlane-closed" data-swimlane="closed"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class StockKanban {
+            constructor() {
+                this.stocks = this.loadFromDB();
+                this.searchInput = document.getElementById('stockSearch');
+                this.searchResults = document.getElementById('searchResults');
+                this.searchTimeout = null;
+                this.init();
+            }
+
+            init() {
+                this.setupEventListeners();
+                this.render();
+                this.startAutoProgression();
+                this.updateStats();
+            }
+
+            setupEventListeners() {
+                // Search functionality with debounce
+                this.searchInput.addEventListener('input', (e) => {
+                    clearTimeout(this.searchTimeout);
+                    this.searchTimeout = setTimeout(() => {
+                        this.handleSearch(e.target.value);
+                    }, 300);
+                });
+
+                // Allow manual entry with Enter key
+                this.searchInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        const ticker = this.searchInput.value.trim().toUpperCase();
+                        if (ticker) {
+                            this.addStock(ticker, ticker);
+                        }
+                    }
+                });
+                
+                // Close search results when clicking outside
+                document.addEventListener('click', (e) => {
+                    if (!e.target.closest('.search-container')) {
+                        this.searchResults.classList.remove('active');
+                    }
+                });
+
+                // Setup drag and drop for all swimlanes
+                const swimlanes = document.querySelectorAll('.swimlane-content');
+                swimlanes.forEach(lane => {
+                    lane.addEventListener('dragover', (e) => this.handleDragOver(e));
+                    lane.addEventListener('drop', (e) => this.handleDrop(e));
+                    lane.addEventListener('dragleave', (e) => this.handleDragLeave(e));
+                });
+            }
+
+            async handleSearch(query) {
+                if (!query.trim()) {
+                    this.searchResults.classList.remove('active');
+                    return;
+                }
+
+                // Show loading state
+                this.searchResults.innerHTML = '<div class="search-result-item">Searching...</div>';
+                this.searchResults.classList.add('active');
+
+                try {
+                    // Try multiple API options
+                    let results = await this.searchStockAPIs(query);
+
+                    if (results && results.length > 0) {
+                        this.searchResults.innerHTML = results.map(stock => `
+                            <div class="search-result-item" data-symbol="${stock.symbol}" data-name="${stock.name}">
+                                <div class="ticker-symbol">${stock.symbol}</div>
+                                <div class="company-name">${stock.name}</div>
+                            </div>
+                        `).join('');
+
+                        this.searchResults.querySelectorAll('.search-result-item').forEach(item => {
+                            item.addEventListener('click', () => this.addStock(
+                                item.dataset.symbol,
+                                item.dataset.name
+                            ));
+                        });
+
+                        this.searchResults.classList.add('active');
+                    } else {
+                        this.searchResults.innerHTML = '<div class="search-result-item">No results found</div>';
+                        this.searchResults.classList.add('active');
+                    }
+                } catch (error) {
+                    console.error('Search error:', error);
+                    this.searchResults.innerHTML = `
+                        <div class="search-result-item" style="color: #dc3545;">
+                            Search unavailable. Enter ticker manually (e.g., AAPL, TSLA).
+                        </div>
+                    `;
+                    this.searchResults.classList.add('active');
+                }
+            }
+
+            async searchStockAPIs(query) {
+                // Try Alpha Vantage API (free, no CORS issues)
+                try {
+                    const response = await fetch(
+                        `https://www.alphavantage.co/query?function=SYMBOL_SEARCH&keywords=${encodeURIComponent(query)}&apikey=demo`,
+                        { mode: 'cors' }
+                    );
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.bestMatches && data.bestMatches.length > 0) {
+                            return data.bestMatches.slice(0, 10).map(match => ({
+                                symbol: match['1. symbol'],
+                                name: match['2. name']
+                            }));
+                        }
+                    }
+                } catch (e) {
+                    console.log('Alpha Vantage failed, trying Yahoo Finance...');
+                }
+
+                // Try Yahoo Finance with CORS proxy
+                try {
+                    const response = await fetch(
+                        `https://corsproxy.io/?${encodeURIComponent(`https://query1.finance.yahoo.com/v1/finance/search?q=${query}&quotesCount=10&newsCount=0`)}`
+                    );
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.quotes && data.quotes.length > 0) {
+                            return data.quotes
+                                .filter(q => q.quoteType === 'EQUITY' || q.quoteType === 'ETF')
+                                .slice(0, 10)
+                                .map(q => ({
+                                    symbol: q.symbol,
+                                    name: q.longname || q.shortname || q.symbol
+                                }));
+                        }
+                    }
+                } catch (e) {
+                    console.log('Yahoo Finance failed');
+                }
+
+                return null;
+            }
+
+            addStock(symbol, name) {
+                // Check if stock already exists
+                if (this.stocks.some(s => s.symbol === symbol)) {
+                    alert(`${symbol} is already in your dashboard`);
+                    return;
+                }
+
+                const newStock = {
+                    id: Date.now(),
+                    symbol: symbol,
+                    name: name,
+                    dateAdded: new Date().toISOString(),
+                    swimlane: 'early'
+                };
+
+                this.stocks.push(newStock);
+                this.saveToDB();
+                this.render();
+                this.updateStats();
+                
+                this.searchInput.value = '';
+                this.searchResults.classList.remove('active');
+            }
+
+            getDaysSinceAdded(dateAdded) {
+                const now = new Date();
+                const added = new Date(dateAdded);
+                const diffTime = Math.abs(now - added);
+                const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                return diffDays;
+            }
+
+            formatDate(dateString) {
+                const date = new Date(dateString);
+                return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+            }
+
+            render() {
+                const swimlanes = {
+                    early: document.getElementById('swimlane-early'),
+                    established: document.getElementById('swimlane-established'),
+                    closed: document.getElementById('swimlane-closed')
+                };
+
+                // Clear all swimlanes
+                Object.values(swimlanes).forEach(lane => lane.innerHTML = '');
+
+                // Group stocks by swimlane
+                const groupedStocks = {
+                    early: [],
+                    established: [],
+                    closed: []
+                };
+
+                this.stocks.forEach(stock => {
+                    groupedStocks[stock.swimlane].push(stock);
+                });
+
+                // Render stocks in each swimlane
+                Object.keys(groupedStocks).forEach(swimlane => {
+                    const stocks = groupedStocks[swimlane];
+                    
+                    if (stocks.length === 0) {
+                        swimlanes[swimlane].innerHTML = '<div class="no-stocks" style="grid-column: 1 / -1;">No stocks in this lane</div>';
+                    } else {
+                        swimlanes[swimlane].innerHTML = stocks.map(stock => {
+                            const days = this.getDaysSinceAdded(stock.dateAdded);
+                            return `
+                                <div class="stock-card" draggable="true" data-id="${stock.id}">
+                                    <div class="stock-ticker">${stock.symbol}</div>
+                                    <div class="stock-info">
+                                        <span class="days-badge">${days} ${days === 1 ? 'day' : 'days'}</span>
+                                    </div>
+                                    <div class="date-added">Added: ${this.formatDate(stock.dateAdded)}</div>
+                                    <button class="delete-btn" onclick="kanban.deleteStock(${stock.id})">Remove</button>
+                                </div>
+                            `;
+                        }).join('');
+
+                        // Add drag event listeners to cards
+                        swimlanes[swimlane].querySelectorAll('.stock-card').forEach(card => {
+                            card.addEventListener('dragstart', (e) => this.handleDragStart(e));
+                            card.addEventListener('dragend', (e) => this.handleDragEnd(e));
+                        });
+                    }
+                });
+            }
+
+            handleDragStart(e) {
+                e.target.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/html', e.target.dataset.id);
+            }
+
+            handleDragEnd(e) {
+                e.target.classList.remove('dragging');
+            }
+
+            handleDragOver(e) {
+                if (e.preventDefault) {
+                    e.preventDefault();
+                }
+                e.dataTransfer.dropEffect = 'move';
+                e.currentTarget.classList.add('drag-over');
+                return false;
+            }
+
+            handleDragLeave(e) {
+                e.currentTarget.classList.remove('drag-over');
+            }
+
+            handleDrop(e) {
+                if (e.stopPropagation) {
+                    e.stopPropagation();
+                }
+                e.preventDefault();
+                
+                e.currentTarget.classList.remove('drag-over');
+                
+                const stockId = parseInt(e.dataTransfer.getData('text/html'));
+                const newSwimlane = e.currentTarget.dataset.swimlane;
+                
+                const stock = this.stocks.find(s => s.id === stockId);
+                if (stock) {
+                    stock.swimlane = newSwimlane;
+                    this.saveToDB();
+                    this.render();
+                    this.updateStats();
+                }
+                
+                return false;
+            }
+
+            deleteStock(id) {
+                if (confirm('Are you sure you want to remove this stock from the dashboard?')) {
+                    this.stocks = this.stocks.filter(s => s.id !== id);
+                    this.saveToDB();
+                    this.render();
+                    this.updateStats();
+                }
+            }
+
+            startAutoProgression() {
+                // Check every hour for stocks that need to move
+                setInterval(() => {
+                    this.checkAutoProgression();
+                }, 1000 * 60 * 60); // Check every hour
+
+                // Also check on load
+                this.checkAutoProgression();
+            }
+
+            checkAutoProgression() {
+                let updated = false;
+                
+                this.stocks.forEach(stock => {
+                    if (stock.swimlane === 'early') {
+                        const days = this.getDaysSinceAdded(stock.dateAdded);
+                        if (days >= 3) {
+                            stock.swimlane = 'established';
+                            updated = true;
+                        }
+                    }
+                });
+
+                if (updated) {
+                    this.saveToDB();
+                    this.render();
+                    this.updateStats();
+                }
+            }
+
+            updateStats() {
+                const total = this.stocks.length;
+                const closed = this.stocks.filter(s => s.swimlane === 'closed').length;
+                const active = total - closed;
+
+                document.getElementById('totalStocks').textContent = total;
+                document.getElementById('activeStocks').textContent = active;
+                document.getElementById('closedStocks').textContent = closed;
+            }
+
+            saveToDB() {
+                localStorage.setItem('stockKanbanData', JSON.stringify(this.stocks));
+            }
+
+            loadFromDB() {
+                const data = localStorage.getItem('stockKanbanData');
+                return data ? JSON.parse(data) : [];
+            }
+
+            // Import/Export Functions
+            showImportModal() {
+                document.getElementById('importModal').classList.add('active');
+            }
+
+            closeImportModal() {
+                document.getElementById('importModal').classList.remove('active');
+                document.getElementById('bulkImportText').value = '';
+            }
+
+            handleFileImport(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const text = e.target.result;
+                    this.parseAndImportCSV(text);
+                };
+                reader.readAsText(file);
+            }
+
+            parseAndImportCSV(csvText) {
+                const lines = csvText.split('\n').filter(line => line.trim());
+                let imported = 0;
+                let skipped = 0;
+
+                lines.forEach((line, index) => {
+                    // Skip header row if it looks like a header
+                    if (index === 0 && line.toLowerCase().includes('symbol')) return;
+
+                    const parts = line.split(',').map(p => p.trim());
+                    if (parts.length === 0 || !parts[0]) return;
+
+                    const symbol = parts[0].toUpperCase();
+                    
+                    // Check if already exists
+                    if (this.stocks.some(s => s.symbol === symbol)) {
+                        skipped++;
+                        return;
+                    }
+
+                    const name = parts[1] || symbol;
+                    const dateAdded = parts[2] ? new Date(parts[2]).toISOString() : new Date().toISOString();
+                    const swimlane = parts[3] || 'early';
+
+                    this.stocks.push({
+                        id: Date.now() + imported,
+                        symbol: symbol,
+                        name: name,
+                        dateAdded: dateAdded,
+                        swimlane: ['early', 'established', 'closed'].includes(swimlane) ? swimlane : 'early'
+                    });
+                    imported++;
+                });
+
+                this.saveToDB();
+                this.render();
+                this.updateStats();
+                this.closeImportModal();
+
+                alert(`Import complete!\n✅ Imported: ${imported}\n⏭️ Skipped (duplicates): ${skipped}`);
+            }
+
+            processBulkImport() {
+                const text = document.getElementById('bulkImportText').value;
+                if (!text.trim()) {
+                    alert('Please enter stock symbols to import');
+                    return;
+                }
+
+                this.parseAndImportCSV(text);
+            }
+
+            exportToCSV() {
+                if (this.stocks.length === 0) {
+                    alert('No stocks to export');
+                    return;
+                }
+
+                let csv = 'Symbol,Name,Date Added,Swimlane,Days Since Added\n';
+                
+                this.stocks.forEach(stock => {
+                    const days = this.getDaysSinceAdded(stock.dateAdded);
+                    const date = new Date(stock.dateAdded).toISOString().split('T')[0];
+                    csv += `${stock.symbol},${stock.name},${date},${stock.swimlane},${days}\n`;
+                });
+
+                this.downloadFile(csv, 'stock-positions.csv', 'text/csv');
+            }
+
+            exportToJSON() {
+                if (this.stocks.length === 0) {
+                    alert('No stocks to export');
+                    return;
+                }
+
+                const json = JSON.stringify(this.stocks, null, 2);
+                this.downloadFile(json, 'stock-positions.json', 'application/json');
+            }
+
+            downloadFile(content, filename, type) {
+                const blob = new Blob([content], { type: type });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+
+            clearAllData() {
+                if (confirm('⚠️ Are you sure you want to delete ALL stock positions?\n\nThis cannot be undone!')) {
+                    this.stocks = [];
+                    this.saveToDB();
+                    this.render();
+                    this.updateStats();
+                    alert('All data cleared successfully');
+                }
+            }
+        }
+
+        // Initialize the Kanban board
+        const kanban = new StockKanban();
+
+        // PWA: Register Service Worker
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('service-worker.js')
+                    .then(registration => {
+                        console.log('ServiceWorker registration successful');
+                    })
+                    .catch(err => {
+                        console.log('ServiceWorker registration failed: ', err);
+                    });
+            });
+        }
+
+        // PWA: Install prompt for iOS
+        let deferredPrompt;
+        const installButton = document.createElement('button');
+        installButton.textContent = '📱 Install App';
+        installButton.className = 'btn btn-primary';
+        installButton.style.display = 'none';
+        
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installButton.style.display = 'inline-flex';
+            
+            // Add install button to import section
+            const importSection = document.querySelector('.import-export-section');
+            if (importSection && !document.querySelector('.install-btn-added')) {
+                installButton.classList.add('install-btn-added');
+                importSection.insertBefore(installButton, importSection.firstChild);
+            }
+        });
+
+        installButton.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                console.log(`User response to install prompt: ${outcome}`);
+                deferredPrompt = null;
+                installButton.style.display = 'none';
+            }
+        });
+
+        // Check if app is already installed
+        window.addEventListener('appinstalled', () => {
+            console.log('PWA installed successfully');
+            installButton.style.display = 'none';
+        });
+
+        // iOS-specific install instructions
+        function isIOS() {
+            return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        }
+
+        function isInStandaloneMode() {
+            return (window.matchMedia('(display-mode: standalone)').matches) || (window.navigator.standalone);
+        }
+
+        // Show iOS install instructions if not installed
+        if (isIOS() && !isInStandaloneMode()) {
+            setTimeout(() => {
+                const showIOSInstructions = localStorage.getItem('iosInstallPromptShown');
+                if (!showIOSInstructions) {
+                    const installMsg = confirm(
+                        '📱 Install this app on your iPhone:\n\n' +
+                        '1. Tap the Share button (square with arrow)\n' +
+                        '2. Scroll down and tap "Add to Home Screen"\n' +
+                        '3. Tap "Add" in the top right\n\n' +
+                        'The app will work offline and feel like a native app!\n\n' +
+                        'Show this message again?'
+                    );
+                    if (!installMsg) {
+                        localStorage.setItem('iosInstallPromptShown', 'true');
+                    }
+                }
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
