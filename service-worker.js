@@ -1,7 +1,7 @@
 const CACHE_NAME = 'stock-kanban-v1';
 const urlsToCache = [
-  '/stock-kanban.html',
-  '/'
+  './stock-kanban.html',
+  './'
 ];
 
 // Install event - cache resources
